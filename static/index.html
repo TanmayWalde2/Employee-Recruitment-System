@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Employee Recruitment System</title>
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--tx:#1d2433;--mut:#6b7280;--pri:#2f5bea;--bd:#e3e6ee;--red:#d92d20}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--tx)}
+header{background:var(--pri);color:#fff;padding:14px 18px;font-weight:600;font-size:18px}
+nav{display:flex;gap:6px;overflow-x:auto;padding:10px 12px;background:#fff;border-bottom:1px solid var(--bd)}
+nav button{border:0;background:none;padding:8px 14px;border-radius:20px;cursor:pointer;white-space:nowrap;color:var(--mut);font-size:14px}
+nav button.on{background:var(--pri);color:#fff}
+main{padding:14px;max-width:1100px;margin:auto}
+.bar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.bar h2{margin:0;flex:1;font-size:18px}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;font:inherit;background:#fff}
+.btn{background:var(--pri);color:#fff;border:0;padding:9px 14px;border-radius:8px;cursor:pointer;font:inherit}
+.btn.sm{padding:4px 9px;font-size:13px}.btn.g{background:#e8ebf5;color:var(--tx)}.btn.r{background:var(--red)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--bd);white-space:nowrap}
+th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
+.stat b{display:block;font-size:26px;color:var(--pri)}.stat span{color:var(--mut);font-size:13px}
+.badge{padding:2px 9px;border-radius:12px;font-size:12px;background:#e8ebf5}
+.Selected,.Open{background:#d1fadf;color:#05603a}.Rejected,.Closed{background:#fee4e2;color:#b42318}
+.modal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:14px}
+.modal.on{display:flex}
+.modal form{background:#fff;border-radius:14px;padding:18px;width:100%;max-width:440px;max-height:90vh;overflow:auto}
+label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+.two{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+#err{color:var(--red);font-size:13px;margin-top:8px}
+</style></head><body>
+<header>Employee Recruitment System</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<div class="modal" id="modal"><form id="form"></form></div>
+<script>
+const E = {
+ department:{label:'Departments',pk:'dept_id',f:[['name','Name']],cols:['dept_id','name']},
+ vacancy:{label:'Vacancies',pk:'vacancy_id',cols:['title','department','openings','salary','min_experience','last_date','applications','filled','status'],
+  f:[['title','Job title'],['dept_id','Department','ref','department','name'],['openings','Openings','number'],['salary','Salary (yearly)','number'],['min_experience','Min experience (yrs)','number'],['last_date','Last date','date'],['status','Status','sel',['Open','Closed']]]},
+ applicant:{label:'Applicants',pk:'applicant_id',cols:['applicant_id','name','email','phone','experience_years','address'],
+  f:[['name','Full name'],['email','Email','email'],['phone','Phone'],['experience_years','Experience (yrs)','number'],['address','Address']]},
+ qualification:{label:'Qualifications',pk:'qual_id',cols:['applicant','degree','institution','year','percentage'],
+  f:[['applicant_id','Applicant','ref','applicant','name'],['degree','Degree'],['institution','Institution'],['year','Year','number'],['percentage','Percentage','number']]},
+ interviewer:{label:'Interviewers',pk:'interviewer_id',cols:['name','designation','department'],
+  f:[['name','Name'],['designation','Designation'],['dept_id','Department','ref','department','name']]},
+ application:{label:'Applications',pk:'application_id',cols:['application_id','applicant','vacancy','applied_on','status'],
+  f:[['applicant_id','Applicant','ref','applicant','name'],['vacancy_id','Vacancy','ref','vacancy','title'],['applied_on','Applied on','date'],['status','Status','sel',['Applied','Shortlisted','Interview Scheduled','Selected','Rejected']]]},
+ interview:{label:'Interviews',pk:'interview_id',cols:['application','interviewer','interview_date','round','score','remarks'],
+  f:[['application_id','Application','ref','application','label'],['interviewer_id','Interviewer','ref','interviewer','name'],['interview_date','Date','date'],['round','Round','sel',['Screening','Technical','HR']],['score','Score (0-10)','number'],['remarks','Remarks']]},
+ selection:{label:'Selections',pk:'selection_id',cols:['application','decision','offered_salary','joining_date','decided_on'],
+  f:[['application_id','Application','ref','application','label'],['decision','Decision','sel',['Selected','Rejected']],['offered_salary','Offered salary','number'],['joining_date','Joining date','date'],['decided_on','Decided on','date']]}
+};
+const $=s=>document.querySelector(s);
+const api=(u,m='GET',b)=>fetch('/api/'+u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(async r=>{let j;try{j=await r.json()}catch(_){throw new Error('Server error ('+r.status+') - check the terminal for details')}if(!r.ok)throw new Error(j.error||'Error');return j});
+const esc=v=>v==null?'':String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pretty=c=>c.replace(/_id$/,'').replace(/_/g,' ');
+const cell=(c,v)=>(c==='status'||c==='decision')?`<span class="badge ${esc(v)}">${esc(v)}</span>`:esc(v);
+let tab='dashboard';
+
+$('#nav').innerHTML=['dashboard',...Object.keys(E)].map(k=>`<button data-k="${k}">${k==='dashboard'?'Dashboard':E[k].label}</button>`).join('');
+$('#nav').onclick=e=>{if(e.target.dataset.k){tab=e.target.dataset.k;render()}};
+
+async function render(){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.k===tab));
+  tab==='dashboard'?dashboard():list(tab);
+}
+async function dashboard(){
+  const s=await api('report/stats');
+  const tbl=(rows,cols)=>`<table><tr>${cols.map(c=>`<th>${pretty(c)}</th>`).join('')}</tr>${rows.map(r=>`<tr>${cols.map(c=>`<td>${cell(c,r[c])}</td>`).join('')}</tr>`).join('')}</table>`;
+  $('#main').innerHTML=`<div class="grid">
+   <div class="stat"><b>${s.open_vacancies}</b><span>Open vacancies</span></div>
+   ${Object.entries(s.counts).map(([k,v])=>`<div class="stat"><b>${v}</b><span>${k}s</span></div>`).join('')}</div>
+   <div class="two">
+    <div class="card"><h3>Applications by status</h3>${tbl(s.by_status,['status','n'])}</div>
+    <div class="card"><h3>Candidate ranking (avg interview score)</h3>${tbl(s.ranking,['applicant','vacancy','avg_score','rounds','status'])}</div>
+   </div>
+   <div class="card" style="margin-top:14px"><h3>Vacancy summary</h3>${tbl(s.per_vacancy,['title','department','openings','applications','filled'])}</div>`;
+}
+async function list(k){
+  const e=E[k],rows=await api(k);
+  $('#main').innerHTML=`<div class="bar"><h2>${e.label}</h2><input id="q" placeholder="Search…" style="max-width:200px"><button class="btn" onclick="openForm('${k}')">+ Add</button></div>
+  <div class="card"><table><tr>${e.cols.map(c=>`<th>${pretty(c)}</th>`).join('')}<th></th></tr><tbody id="tb">${rows.map(r=>`<tr>${e.cols.map(c=>`<td>${cell(c,r[c])}</td>`).join('')}<td>
+   <button class="btn sm g" onclick='openForm("${k}",${JSON.stringify(r).replace(/'/g,"&#39;")})'>Edit</button>
+   <button class="btn sm r" onclick="del('${k}',${r[e.pk]})">Del</button></td></tr>`).join('')}</tbody></table>
+   ${rows.length?'':'<p style="color:var(--mut)">No records yet.</p>'}</div>`;
+  $('#q').oninput=ev=>{const t=ev.target.value.toLowerCase();document.querySelectorAll('#tb tr').forEach(tr=>tr.style.display=tr.textContent.toLowerCase().includes(t)?'':'none')};
+}
+async function openForm(k,row){
+  const e=E[k];let html=`<h3 style="margin:0">${row?'Edit':'Add'} ${e.label.replace(/s$/,'')}</h3>`;
+  for(const [n,l,t,a,b] of e.f){
+    let v=row?row[n]:(t==='date'?new Date().toISOString().slice(0,10):'');v=v??'';
+    let inp;
+    if(t==='ref'){const opts=await api(a);inp=`<select name="${n}" required>${opts.map(o=>`<option value="${o[E[a].pk]}" ${o[E[a].pk]==v?'selected':''}>${esc(o[b])}</option>`).join('')}</select>`}
+    else if(t==='sel')inp=`<select name="${n}">${a.map(o=>`<option ${o==v?'selected':''}>${o}</option>`).join('')}</select>`;
+    else inp=`<input name="${n}" type="${t||'text'}" step="any" value="${esc(v)}" ${['remarks','phone','address','offered_salary','joining_date','percentage','score','designation'].includes(n)?'':'required'}>`;
+    html+=`<label>${l}</label>${inp}`;
+  }
+  html+=`<div id="err"></div><div class="bar" style="margin-top:14px"><button class="btn">Save</button><button type="button" class="btn g" onclick="closeForm()">Cancel</button></div>`;
+  $('#form').innerHTML=html;$('#modal').classList.add('on');
+  $('#form').onsubmit=async ev=>{ev.preventDefault();
+    const d=Object.fromEntries(new FormData(ev.target));
+    try{row?await api(`${k}/${row[e.pk]}`,'PUT',d):await api(k,'POST',d);closeForm();render()}
+    catch(x){$('#err').textContent=x.message}};
+}
+const closeForm=()=>$('#modal').classList.remove('on');
+async function del(k,id){if(confirm('Delete this record? Related records may also be removed.')){try{await api(`${k}/${id}`,'DELETE');render()}catch(x){alert(x.message)}}}
+render();
+</script></body></html>
